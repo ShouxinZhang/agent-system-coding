@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from .visualization import write_latest_status
+
 
 def trace_node(node_name: str):
     def decorator(func):
@@ -88,6 +90,8 @@ def _write_trace_event(
     events_path = traces_dir / "events.jsonl"
     with events_path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(event, ensure_ascii=False) + "\n")
+
+    write_latest_status(runtime_dir, event)
 
 
 def _summarize_state(state: dict[str, Any]) -> dict[str, Any]:

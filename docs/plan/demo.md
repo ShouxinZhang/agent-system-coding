@@ -1,4 +1,4 @@
-# LangGraph Demo Flow
+# LangGraph Demo Flow V2
 
 这张图描述当前仓库中已经实现的 LangGraph MVP 流程。
 
@@ -14,14 +14,15 @@ flowchart TD
     A([START]) --> B[plan]
     B --> C[dispatch]
 
-    C -->|current_task_id exists| D[execute]
-    C -->|no ready task| H[finalize]
+    C -->|ready batch exists| D[execute_task x N]
+    C -->|no ready task| I[finalize]
 
-    D --> E[review]
-    E --> F[update]
-    F --> C
+    D --> E[dispatch_reviews]
+    E --> F[review_task x N]
+    F --> G[update]
+    G --> C
 
-    H --> I([END])
+    I --> J([END])
 ```
 
 ## 节点说明
@@ -32,22 +33,29 @@ flowchart TD
   - 写入 trace
 
 - `dispatch`
-  - 从 plan 中挑选当前可执行任务
-  - 如果有 ready task，则设置 `current_task_id`
+  - 从 plan 中挑选当前可执行任务 batch
+  - 挑选规则是：依赖已满足，且 `allowed_paths` 之间不冲突
+  - 如果选出多个互不冲突任务，就作为并行 batch 发出
   - 如果没有可执行任务，则转到 `finalize`
 
-- `execute`
+- `execute_task`
+  - 每个 task 启动一个并行 worker
   - 为当前任务写出 `*.dispatch.json`
   - 调用 CodeX CLI 执行任务
   - 写出 `*.result.json`
   - 记录本轮观测到的新增改动文件
 
-- `review`
+- `dispatch_reviews`
+  - 收集当前 batch 的 execute 结果
+  - 为每个 task 生成一个 review worker
+
+- `review_task`
+  - 每个 task 启动一个并行 reviewer
   - 调用 CodeX CLI 对当前任务做验收
   - 写出 `*.review.json`
 
 - `update`
-  - 根据 review 结果更新任务状态
+  - 汇总当前 batch 的 review 结果
   - 通过则标记为 `accepted`
   - 失败则按重试次数回到 `pending` 或标记 `blocked`
   - 回写 `plan.json`
@@ -59,11 +67,16 @@ flowchart TD
 
 ## 状态回路
 
-当前 demo 的核心回路是：
+当前 demo v2 的核心回路是：
 
-`plan -> dispatch -> execute -> review -> update -> dispatch`
+`plan -> dispatch -> execute_task(xN) -> dispatch_reviews -> review_task(xN) -> update -> dispatch`
 
 只要还有任务可执行，这个回路就会继续。
+
+其中：
+
+- `execute_task(xN)` 表示同一批 ready tasks 并行执行
+- `review_task(xN)` 表示同一批任务并行 review
 
 当没有新的 ready task 时，流程进入：
 

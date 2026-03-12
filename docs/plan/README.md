@@ -1,6 +1,7 @@
 # Graph Coding System 方案草案
 
 最小可实现版本见 [mvp.md](/home/wudizhe001/Documents/GitHub/agent-system-coding/docs/plan/mvp.md)。
+当前 LangGraph v2 流程图见 [demo.md](/home/wudizhe001/Documents/GitHub/agent-system-coding/docs/plan/demo.md)。
 
 ## 目标
 

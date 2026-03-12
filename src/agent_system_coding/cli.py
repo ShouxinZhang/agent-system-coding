@@ -42,6 +42,12 @@ def main() -> None:
         default=None,
         help="Optional Codex model override",
     )
+    parser.add_argument(
+        "--reasoning-effort",
+        default="high",
+        choices=["low", "medium", "high", "xhigh"],
+        help="Codex reasoning effort override; defaults to high for this project",
+    )
     args = parser.parse_args()
 
     repo_path = Path(args.repo).resolve()
@@ -57,6 +63,7 @@ def main() -> None:
         sandbox=args.sandbox,
         max_retries=args.max_retries,
         model=args.model,
+        reasoning_effort=args.reasoning_effort,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
 

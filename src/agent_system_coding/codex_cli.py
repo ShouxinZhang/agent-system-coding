@@ -18,6 +18,7 @@ def run_codex_exec(
     output_path: Path,
     sandbox: str = "workspace-write",
     model: str | None = None,
+    reasoning_effort: str = "high",
 ) -> dict[str, Any]:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -29,6 +30,8 @@ def run_codex_exec(
         "--skip-git-repo-check",
         "--sandbox",
         sandbox,
+        "-c",
+        f'model_reasoning_effort="{reasoning_effort}"',
         "--output-schema",
         str(output_schema_path),
         "-o",

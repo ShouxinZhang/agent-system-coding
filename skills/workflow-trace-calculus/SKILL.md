@@ -9,6 +9,7 @@ Use this skill to validate two things at once:
 
 1. the local workflow can run end to end
 2. every node leaves machine-readable trace artifacts
+3. at least one batch of subagents runs in parallel
 
 ## When To Use
 
@@ -31,7 +32,9 @@ Run:
 
 The smoke test should produce:
 
-- `runtime/calculus-smoke/demo-repo/docs/calculus-smoke-answer.md`
+- `runtime/calculus-smoke/demo-repo/docs/derivative-answer.md`
+- `runtime/calculus-smoke/demo-repo/docs/integral-answer.md`
+- `runtime/calculus-smoke/demo-repo/docs/final-summary.md`
 - `runtime/calculus-smoke/plan.json`
 - `runtime/calculus-smoke/tasks/*.dispatch.json`
 - `runtime/calculus-smoke/tasks/*.result.json`
@@ -46,10 +49,15 @@ The smoke test should produce:
 Treat the smoke test as passed only if:
 
 - `summary.json` has `final_status = "done"`
-- `runtime/calculus-smoke/demo-repo/docs/calculus-smoke-answer.md` exists
-- the answer file contains the final derivative result `6`
+- `runtime/calculus-smoke/demo-repo/docs/derivative-answer.md` exists
+- `runtime/calculus-smoke/demo-repo/docs/integral-answer.md` exists
+- `runtime/calculus-smoke/demo-repo/docs/final-summary.md` exists
+- 导数答案文件包含 `12`
+- 定积分答案文件包含 `2`
+- 汇总文件同时提到 `12` 和 `2`
 - `events.jsonl` contains all six nodes:
-  `plan`, `dispatch`, `execute`, `review`, `update`, `finalize`
+  `plan`, `dispatch`, `execute_task`, `dispatch_reviews`, `review_task`, `update`, `finalize`
+- 至少存在一个 dispatch batch 选中了 2 个 task
 
 ## Failure Handling
 

@@ -8,6 +8,7 @@
 
 - LangGraph 负责状态流转
 - CodeX CLI 负责 `plan / execute / review`
+- v2 已支持同一批 ready tasks 的并行 `execute_task / review_task`
 - 运行产物落在 `runtime/`
 - 每个 workflow 节点都会把 `start / end / error` trace 落在 `runtime/*/traces/`
 
@@ -36,13 +37,27 @@ codex login
   --sandbox workspace-write
 ```
 
+默认情况下，这个项目会显式把 CodeX CLI 的 `reasoning effort` 设为 `high`。
+你也可以手动覆盖：
+
+```bash
+.venv/bin/agent-system-coding \
+  --request "为当前项目生成一个最小计划，并逐步完成任务" \
+  --repo . \
+  --sandbox workspace-write \
+  --reasoning-effort xhigh
+```
+
 运行时会生成这些文件：
 
 - `runtime/plan.json`
 - `runtime/tasks/*.dispatch.json`
 - `runtime/tasks/*.result.json`
 - `runtime/tasks/*.review.json`
+- `runtime/graph.mmd`
 - `runtime/traces/events.jsonl`
+- `runtime/traces/latest-status.json`
+- `runtime/trace-report.md`
 - `runtime/summary.json`
 
 ## Smoke Skill
@@ -53,9 +68,10 @@ codex login
 
 它会创建一个隔离 demo repo，然后用一道简单微积分题验证：
 
-- workflow 的 `plan / dispatch / execute / review / update / finalize` 节点都完成
+- workflow 的 `plan / dispatch / execute_task / dispatch_reviews / review_task / update / finalize` 节点都完成
 - 每个节点都有 trace
-- 最终 answer 文件和 `summary.json` 都正确
+- 至少一批 subagents 并行执行
+- 最终答案文件和 `summary.json` 都正确
 
 详细方案见 [docs/plan/README.md](/home/wudizhe001/Documents/GitHub/agent-system-coding/docs/plan/README.md)。
 最小范围说明见 [docs/plan/mvp.md](/home/wudizhe001/Documents/GitHub/agent-system-coding/docs/plan/mvp.md)。
