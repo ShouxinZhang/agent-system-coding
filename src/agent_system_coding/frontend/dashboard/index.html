@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent System Coding Dashboard</title>
+  <link rel="stylesheet" href="/static/monitor_dashboard.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <div class="eyebrow">Launch</div>
+            <h2>New Run</h2>
+          </div>
+        </div>
+        <p class="muted">前端提交一条 chat 指令，后端创建隔离 demo repo，并启动一条新的 LangGraph workflow run。</p>
+        <textarea id="prompt-input">__INITIAL_PROMPT__</textarea>
+        <button id="start-run" class="primary-button">Launch Run</button>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div>
+            <div class="eyebrow">History</div>
+            <h2>Runs</h2>
+          </div>
+        </div>
+        <div id="run-list"></div>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <section class="panel graph-card">
+        <div class="graph-bg"></div>
+        <div class="graph-head">
+          <div>
+            <div class="eyebrow">Workflow Graph</div>
+            <h2 style="margin-bottom: 0;">LangGraph Runtime</h2>
+          </div>
+          <div class="graph-badges">
+            <span class="badge" id="graph-run-badge">run: -</span>
+            <span class="badge" id="graph-node-badge">node: -</span>
+            <span class="badge" id="graph-phase-badge">phase: -</span>
+          </div>
+        </div>
+        <svg class="graph-svg" viewBox="0 0 1120 660">
+          <defs>
+            <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="strokeWidth">
+              <path d="M0 0 L10 5 L0 10 Z" fill="currentColor"></path>
+            </marker>
+          </defs>
+          <path id="edge-start-plan" class="edge" data-from="node-start" data-to="node-plan" data-from-anchor="bottom" data-to-anchor="top" data-shape="elbow" marker-end="url(#arrow)"></path>
+          <path id="edge-plan-dispatch" class="edge" data-from="node-plan" data-to="node-dispatch" data-from-anchor="bottom" data-to-anchor="top" data-shape="elbow" marker-end="url(#arrow)"></path>
+          <path id="edge-dispatch-execute" class="edge" data-from="node-dispatch" data-to="node-execute_task" data-from-anchor="bottom" data-to-anchor="top" data-shape="elbow" marker-end="url(#arrow)"></path>
+          <path id="edge-execute-dispatch-reviews" class="edge" data-from="node-execute_task" data-to="node-dispatch_reviews" data-from-anchor="bottom" data-to-anchor="top" data-shape="elbow" marker-end="url(#arrow)"></path>
+          <path id="edge-dispatch-reviews-review" class="edge" data-from="node-dispatch_reviews" data-to="node-review_task" data-from-anchor="bottom" data-to-anchor="top" data-shape="elbow" marker-end="url(#arrow)"></path>
+          <path id="edge-review-update" class="edge" data-from="node-review_task" data-to="node-update" data-from-anchor="bottom" data-to-anchor="top" data-shape="elbow" marker-end="url(#arrow)"></path>
+          <path id="edge-update-dispatch" class="edge loop" data-from="node-update" data-to="node-dispatch" data-from-anchor="right" data-to-anchor="right" data-shape="loop-right" marker-end="url(#arrow)"></path>
+          <path id="edge-dispatch-finalize" class="edge" data-from="node-dispatch" data-to="node-finalize" data-from-anchor="bottom" data-to-anchor="top" data-shape="elbow" marker-end="url(#arrow)"></path>
+          <path id="edge-finalize-end" class="edge" data-from="node-finalize" data-to="node-end" data-from-anchor="bottom" data-to-anchor="top" data-shape="elbow" marker-end="url(#arrow)"></path>
+        </svg>
+        <div class="graph-label" style="left: 250px; top: 250px;">ready batch exists</div>
+        <div class="graph-label" style="left: 710px; top: 250px;">no ready task</div>
+
+        <div class="node terminal idle" id="node-start" style="left: 465px; top: 24px;"><h3>START</h3></div>
+        <div class="node idle" id="node-plan" style="left: 450px; top: 96px; width: 160px;"><h3>plan</h3><p>生成任务计划</p></div>
+        <div class="node idle" id="node-dispatch" style="left: 440px; top: 192px; width: 180px;"><h3>dispatch</h3><p>挑选 ready tasks 或 finalize</p></div>
+        <div class="node idle" id="node-execute_task" style="left: 110px; top: 318px; width: 220px;"><h3>execute_task</h3><p>并行 executor subagents</p></div>
+        <div class="node idle" id="node-dispatch_reviews" style="left: 110px; top: 416px; width: 220px;"><h3>dispatch_reviews</h3><p>收敛 execute 结果</p></div>
+        <div class="node idle" id="node-review_task" style="left: 110px; top: 514px; width: 220px;"><h3>review_task</h3><p>并行 reviewer 验收</p></div>
+        <div class="node idle" id="node-update" style="left: 450px; top: 536px; width: 160px;"><h3>update</h3><p>更新计划并回环</p></div>
+        <div class="node idle" id="node-finalize" style="left: 780px; top: 318px; width: 180px;"><h3>finalize</h3><p>无更多任务时汇总 summary</p></div>
+        <div class="node terminal idle" id="node-end" style="left: 805px; top: 432px;"><h3>END</h3></div>
+      </section>
+
+      <section class="panel console-card">
+        <div class="panel-header">
+          <div>
+            <div class="eyebrow">Agent Console</div>
+            <h2 style="margin-bottom: 0;">Planner / Executor / Reviewer Context</h2>
+          </div>
+          <span class="badge" id="console-badge">thread: -</span>
+        </div>
+        <div class="console-shell">
+          <div class="thread-list" id="thread-list"></div>
+          <div class="thread-view">
+            <div class="thread-meta" id="thread-meta">
+              <strong>未选择线程</strong>
+              <div class="muted" style="margin-top: 6px;">运行后这里会显示对应 agent 的 prompt、结果和 artifact 内容。</div>
+            </div>
+            <div class="chat-log" id="chat-log">
+              <div class="empty">等待 workflow 运行。</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <aside class="detail-pane">
+      <div class="panel">
+        <div class="eyebrow">Runtime</div>
+        <h2>Run Status</h2>
+        <div class="stat"><span>Run</span><strong id="run-id">__SELECTED_LABEL__</strong></div>
+        <div class="stat"><span>Status</span><strong id="run-status">idle</strong></div>
+        <div class="stat"><span>Latest Node</span><strong id="latest-node">-</strong></div>
+        <div class="stat"><span>Latest Phase</span><strong id="latest-phase">-</strong></div>
+        <div class="stat"><span>Task</span><strong id="latest-task">-</strong></div>
+        <div class="stat"><span>Final</span><strong id="final-status">-</strong></div>
+      </div>
+
+      <div class="panel">
+        <div class="eyebrow">Node</div>
+        <h2>Node State</h2>
+        <div class="stat"><span>Selected</span><strong id="selected-node">-</strong></div>
+        <div class="stat"><span>Status</span><strong id="selected-node-status">-</strong></div>
+        <div class="stat"><span>Latest Phase</span><strong id="selected-node-phase">-</strong></div>
+        <div class="stat"><span>Runs</span><strong id="selected-node-runs">-</strong></div>
+        <div id="selected-node-tags"></div>
+        <div class="event-stack" id="selected-node-events">
+          <div>点击 graph 中的节点后，这里会显示该节点最近的运行事件。</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="eyebrow">Plan</div>
+        <h2>Tasks</h2>
+        <div id="task-list"></div>
+      </div>
+
+      <div class="panel">
+        <div class="eyebrow">Parallel</div>
+        <h2>Batches</h2>
+        <div id="batch-list"></div>
+      </div>
+
+      <div class="panel">
+        <div class="eyebrow">Files</div>
+        <h2>Artifacts</h2>
+        <div id="artifact-list"></div>
+      </div>
+
+      <div class="panel">
+        <div class="eyebrow">Trace</div>
+        <h2>Timeline</h2>
+        <ul class="timeline" id="timeline"></ul>
+      </div>
+    </aside>
+  </div>
+  <script>
+    window.MONITOR_BOOTSTRAP = { selectedRunId: __SELECTED_JSON__ };
+  </script>
+  <script src="/static/monitor_dashboard.js"></script>
+</body>
+</html>

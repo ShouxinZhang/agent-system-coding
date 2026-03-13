@@ -25,7 +25,7 @@ Use this skill when:
 Run:
 
 ```bash
-.venv/bin/python skills/workflow-trace-calculus/scripts/run_smoke.py
+.venv/bin/python .agents/skills/workflow-trace-calculus/scripts/run_smoke.py
 ```
 
 ## Expected Outputs

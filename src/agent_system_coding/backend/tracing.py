@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from .visualization import write_latest_status
+from .writers import write_latest_status
 
 
 def trace_node(node_name: str):
@@ -99,7 +99,9 @@ def _summarize_state(state: dict[str, Any]) -> dict[str, Any]:
     tasks = plan.get("tasks", [])
     return {
         "user_request": state.get("user_request"),
-        "current_task_id": state.get("current_task_id"),
+        "current_task_id": state.get("task_id") or state.get("current_task_id"),
+        "active_batch_id": state.get("active_batch_id"),
+        "active_batch_task_ids": state.get("active_batch_task_ids", []),
         "final_status": state.get("final_status"),
         "tasks": [
             {

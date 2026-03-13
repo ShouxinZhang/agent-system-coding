@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from .workflow import run_workflow
+from .backend.workflow import run_workflow
 
 
 def main() -> None:
