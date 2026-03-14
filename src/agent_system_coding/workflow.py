@@ -13,7 +13,7 @@ from langgraph.types import Send
 from .codex_cli import run_codex_exec
 from .prompts import build_execute_prompt, build_plan_prompt, build_review_prompt
 from .tracing import trace_node
-from .writers import write_graph_mermaid, write_trace_report, write_trace_viewer_html
+from .visualization import write_graph_mermaid, write_trace_report
 
 
 class WorkflowState(TypedDict, total=False):
@@ -119,12 +119,6 @@ def plan_node(state: WorkflowState) -> WorkflowState:
         sandbox=state["sandbox"],
         model=state.get("model"),
         reasoning_effort=state["reasoning_effort"],
-        transcript_path=runtime_dir / "agents" / "plan.codex.json",
-        transcript_metadata={
-            "agent": "planner",
-            "node": "plan",
-            "title": "Root Planner",
-        },
     )
 
     for task in plan["tasks"]:
@@ -139,7 +133,6 @@ def plan_node(state: WorkflowState) -> WorkflowState:
         "plan": plan,
         "__trace__": {
             "artifacts": [
-                str(runtime_dir / "agents" / "plan.codex.json"),
                 str(plan_path),
                 str(runtime_dir / "baseline_repo_state.json"),
             ],
@@ -179,7 +172,6 @@ def dispatch_router(state: WorkflowState) -> list[Send] | Literal["finalize"]:
         Send(
             "execute_task",
             {
-                "user_request": state["user_request"],
                 "repo_path": state["repo_path"],
                 "runtime_dir": state["runtime_dir"],
                 "schemas_dir": state["schemas_dir"],
@@ -190,7 +182,6 @@ def dispatch_router(state: WorkflowState) -> list[Send] | Literal["finalize"]:
                 "plan": state["plan"],
                 "active_batch_id": batch_id,
                 "task_id": task_id,
-                "active_batch_task_ids": task_ids,
             },
         )
         for task_id in task_ids
@@ -221,13 +212,6 @@ def execute_task_node(state: WorkflowState) -> WorkflowState:
         sandbox=state["sandbox"],
         model=state.get("model"),
         reasoning_effort=state["reasoning_effort"],
-        transcript_path=runtime_dir / "tasks" / f"{task['task_id']}.execute.codex.json",
-        transcript_metadata={
-            "agent": "executor",
-            "node": "execute_task",
-            "task_id": task["task_id"],
-            "title": f"Executor {task['task_id']}",
-        },
     )
     after_paths = set(_git_status_paths(repo_path))
     observed_changed_files = sorted(after_paths - before_paths)
@@ -243,7 +227,6 @@ def execute_task_node(state: WorkflowState) -> WorkflowState:
         "__trace__": {
             "artifacts": [
                 str(dispatch_path),
-                str(runtime_dir / "tasks" / f"{task['task_id']}.execute.codex.json"),
                 str(runtime_dir / "tasks" / f"{task['task_id']}.result.json"),
             ],
             "task_id": task["task_id"],
@@ -272,7 +255,6 @@ def dispatch_reviews_router(state: WorkflowState) -> list[Send]:
             Send(
                 "review_task",
                 {
-                    "user_request": state["user_request"],
                     "repo_path": state["repo_path"],
                     "runtime_dir": state["runtime_dir"],
                     "schemas_dir": state["schemas_dir"],
@@ -282,7 +264,6 @@ def dispatch_reviews_router(state: WorkflowState) -> list[Send]:
                     "preexisting_paths": state.get("preexisting_paths", []),
                     "plan": state["plan"],
                     "active_batch_id": batch_id,
-                    "active_batch_task_ids": state.get("active_batch_task_ids", []),
                     "task_id": event["task_id"],
                     "execution_events": [event],
                 },
@@ -315,13 +296,6 @@ def review_task_node(state: WorkflowState) -> WorkflowState:
         sandbox=state["sandbox"],
         model=state.get("model"),
         reasoning_effort=state["reasoning_effort"],
-        transcript_path=runtime_dir / "tasks" / f"{task['task_id']}.review.codex.json",
-        transcript_metadata={
-            "agent": "reviewer",
-            "node": "review_task",
-            "task_id": task["task_id"],
-            "title": f"Reviewer {task['task_id']}",
-        },
     )
     review_event = {
         "batch_id": batch_id,
@@ -332,7 +306,6 @@ def review_task_node(state: WorkflowState) -> WorkflowState:
         "review_events": [review_event],
         "__trace__": {
             "artifacts": [
-                str(runtime_dir / "tasks" / f"{task['task_id']}.review.codex.json"),
                 str(runtime_dir / "tasks" / f"{task['task_id']}.review.json"),
             ],
             "task_id": task["task_id"],
@@ -419,12 +392,9 @@ def finalize_node(state: WorkflowState) -> WorkflowState:
         encoding="utf-8",
     )
     trace_report_path = write_trace_report(Path(state["runtime_dir"]))
-    trace_viewer_path = write_trace_viewer_html(Path(state["runtime_dir"]))
     artifacts = [str(summary_path)]
     if trace_report_path:
         artifacts.append(str(trace_report_path))
-    if trace_viewer_path:
-        artifacts.append(str(trace_viewer_path))
     if state.get("graph_mermaid_path"):
         artifacts.append(state["graph_mermaid_path"])
     return {
