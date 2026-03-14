@@ -1,0 +1,7 @@
+[
+  {
+    "problem_idx": "demo-even-sum",
+    "source_name": "runtime_smoke",
+    "question": "Prove that the sum of two even integers is even."
+  }
+]

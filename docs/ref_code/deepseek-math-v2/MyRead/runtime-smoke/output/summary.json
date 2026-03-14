@@ -1,0 +1,16 @@
+{
+  "model": "nvidia/nemotron-3-super-120b-a12b:free",
+  "input_json": "docs/ref_code/deepseek-math-v2/MyRead/runtime-smoke/sample_problem.json",
+  "output_dir": "docs/ref_code/deepseek-math-v2/MyRead/runtime-smoke/output",
+  "items": [
+    {
+      "question": "Prove that the sum of two even integers is even.",
+      "problem_idx": "demo-even-sum",
+      "proof_pool_path": "docs/ref_code/deepseek-math-v2/MyRead/runtime-smoke/output/proof_pool/runtime_smoke/demo-even-sum.jsonl",
+      "score": 0.0,
+      "self_eval_score": 0.0,
+      "forced_refinement_demo": false,
+      "refinement_generated": true
+    }
+  ]
+}

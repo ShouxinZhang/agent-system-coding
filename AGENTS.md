@@ -10,11 +10,11 @@
 - 模块间语义层级依赖关系通过 `.agents/skills/modular-arch` 技能管理（基于 SQLite 数据库 `docs/modular_arch.db`）。新增模块时必须注册并声明依赖方向；设计前后端接口时先用该技能定义接口契约，确保可并行开发；提交前运行 `check` 命令确认无循环依赖或跨层违规。
 - 大规模重构默认通过 `.agents/skills/refactor-migration` 管理旧基线、新结构和 `migration_plan.md`；只有在任务明确进入重构阶段时才加载该技能。
 - Python 代码质量门禁通过 `.agents/skills/python-quality-gate` 执行；默认在代码改动收口阶段按需加载，而不是在任务开始时预加载。
-- 会话留痕通过 `.agents/skills/session-log` 管理；仅在需要追溯、复盘或形成执行记录时加载。
+- 会话留痕通过 `.agents/skills/session-log` 管理。凡是会导致仓库文件发生变更的操作，都必须默认加载该技能并记录会话；不再以“按需”触发。开始执行前必须记录 `prompt`、`understanding`、`tags`；执行完成后必须记录 `summary`、`related files`、`status`。
 - 并行运行子 agent 工作
 
 向用户解释代码时，始终从业务角度进行描述。即使用户是开发者，也要将其视为管理层领导——他们只想了解代码能为业务带来什么、有哪些优势和劣势。
 
 在执行任何代码变更之前，你必须先与用户对齐想法。只有在用户确认方案可行后才能开始工作。
 
-在任何文件删除或回滚操作之前，你必须创建备份。
+在任何文件删除或回滚操作之前，你必须创建备份.agent_cache/.backup/...。

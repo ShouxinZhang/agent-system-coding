@@ -18,6 +18,15 @@ description: '管理和读取工作区目录文档。使用该技能可了解文
 ## How to use (Execution)
 所有操作都通过运行 [agent_docs.py](./scripts/agent_docs.py) 脚本完成。
 
+## Documentation policy
+
+这个技能管理的是“高价值仓库说明”，不是文件系统的全量镜像。
+
+- `scan` 会遵守 `.gitignore`，默认跳过被忽略的路径。
+- 对 `docs/session-logs/`、`docs/plan/image/`、`.agent_cache/`、`runtime/` 这类批量归档或运行时目录，仅维护目录级说明，不要求逐文件写描述。
+- 对代码、配置、架构说明等关键文本文件，要求可在 DB 中快速 CRUD 到描述；重点覆盖 `src/`、`schemas/`、技能脚本与关键仓库入口文件。
+- 图片、数据库、日志、缓存等低价值或生成型文件不进入文件级说明范围。
+
 ### 1. Query Documentation (Read)
 想了解 `src/db.py` 的作用：
 `python3 .agents/skills/workspace-docs/scripts/agent_docs.py get "src/db.py"`
@@ -33,3 +42,7 @@ description: '管理和读取工作区目录文档。使用该技能可了解文
 ### 4. Scan Workspace (Scan)
 扫描工作区中未文档化的文件，并将其加入数据库：
 `python3 .agents/skills/workspace-docs/scripts/agent_docs.py scan`
+
+### 5. Audit Managed Gaps (Audit)
+找出按策略应有说明、但仍缺少有效描述的目录和文件：
+`python3 .agents/skills/workspace-docs/scripts/agent_docs.py audit`

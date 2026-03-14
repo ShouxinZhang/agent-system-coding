@@ -98,6 +98,15 @@ test-results/
 runtime/
 
 # ===========================
+# Large binaries / AppImage
+# ===========================
+*.AppImage
+*.appimage
+
+# Agent cache (backups, temp files)
+.agent_cache/
+
+# ===========================
 # IDE / Editor
 # ===========================
 .idea/

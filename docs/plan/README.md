@@ -2,6 +2,7 @@
 
 最小可实现版本见 [mvp.md](/home/wudizhe001/Documents/GitHub/agent-system-coding/docs/plan/mvp.md)。
 当前 LangGraph v2 流程图见 [demo.md](/home/wudizhe001/Documents/GitHub/agent-system-coding/docs/plan/demo.md)。
+Monitor 前后端拆分重构方案见 [monitor-frontend-backend-refactor.md](/home/wudizhe001/Documents/GitHub/agent-system-coding/docs/plan/monitor-frontend-backend-refactor.md)。
 
 ## 目标
 
