@@ -1,0 +1,3 @@
+display_name: Codex Session Markdown
+short_description: Find Codex sessions and export Markdown
+default_prompt: Use this skill to locate a recent Codex CLI session from a user prompt snippet and export a readable user/assistant Markdown transcript.

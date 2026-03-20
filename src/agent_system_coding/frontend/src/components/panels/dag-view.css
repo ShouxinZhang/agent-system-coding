@@ -1,0 +1,109 @@
+/* ===== React Flow container ===== */
+.panel-body .react-flow {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.dag-flow-wrapper {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+}
+
+/* ===== Handles (connection points) ===== */
+.dag-handle {
+  width: 6px !important;
+  height: 6px !important;
+  background: #444 !important;
+  border: none !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+}
+
+/* ===== Node wrapper ===== */
+.dag-node {
+  transition: all 0.15s ease;
+}
+
+.dag-node-body {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 2px solid;
+  min-width: 120px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.dag-node-circle {
+  border-radius: 50%;
+  min-width: 46px;
+  width: 46px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 11px;
+}
+
+.dag-node-label {
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+/* ===== Status colors ===== */
+.dag-node-pending .dag-node-body {
+  background: #1a1a1a;
+  border-color: var(--status-pending);
+}
+
+.dag-node-accepted .dag-node-body {
+  background: #0f2a1a;
+  border-color: var(--status-accepted);
+}
+
+.dag-node-running .dag-node-body {
+  background: #0f1a2e;
+  border-color: var(--status-running);
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.dag-node-blocked .dag-node-body {
+  background: #2a0f0f;
+  border-color: var(--status-blocked);
+}
+
+/* ===== Selected state ===== */
+.dag-node-selected .dag-node-body {
+  border-color: var(--accent-purple) !important;
+  box-shadow: 0 0 12px rgba(124, 58, 237, 0.3);
+}
+
+/* ===== Hover ===== */
+.dag-node:hover .dag-node-body {
+  filter: brightness(1.2);
+}
+
+/* ===== Header hint ===== */
+.dag-selected-hint {
+  color: var(--accent-purple);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ===== React Flow overrides ===== */
+.react-flow__edge-text {
+  font-size: 10px !important;
+}
+
+/* Hide default React Flow background lines */
+.react-flow__pane {
+  cursor: grab;
+}

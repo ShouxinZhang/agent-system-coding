@@ -1,0 +1,1 @@
+用内置的 generate_image 工具来生成预览图

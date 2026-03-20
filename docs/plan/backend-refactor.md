@@ -1,270 +1,243 @@
-# 后端重构计划
+# 后端重构文档
 
-> 契约文件：[api-contract.md](api-contract.md)
-> 前端重构计划：[frontend-refactor-ui.md](frontend-refactor-ui.md)
+> **状态**: 设计中 (Draft)
+> **版本**: v0.1.0
+> **最后更新**: 2026-03-15
+> **接口契约**: [api-contract.md](./api-contract.md)
+> **并行关系**: 与 [frontend-refactor.md](./frontend-refactor.md) Phase 1 并行开发
 
 ---
 
-## 一、重构范围
+## 1. 业务目标
 
-### 1.1 需要变更的文件
+将 `src/agent_system_coding/` 下的平铺 Python 文件重构为 **FastAPI 后端服务**：
 
-| 文件 | 动作 | 说明 |
-|------|------|------|
-| `backend/server/http_handler.py` | **删除** | BaseHTTPRequestHandler → FastAPI 替代 |
-| `backend/server/runtime.py` | **重构** | 保留业务逻辑，提取 Pydantic models |
-| `backend/server/__init__.py` | **更新** | 导出新 app |
-| `frontend/__init__.py` | **重构** | 移除模板替换逻辑，仅做 dist/ 挂载 |
-| `monitor.py` | **重构** | 从 BaseHTTPRequestHandler 切换到 uvicorn |
-| `pyproject.toml` | **更新** | 添加新依赖 |
-
-### 1.2 完全不动的文件
-
-| 文件 | 原因 |
+| 目标 | 描述 |
 |------|------|
-| `backend/workflow.py` | 核心状态机，无需改动 |
-| `backend/codex_cli.py` | Codex CLI 调用层 |
-| `backend/prompts.py` | prompt 模板 |
-| `backend/tracing.py` | trace 装饰器 |
-| `backend/snapshot.py` | 快照聚合（被 routes 层调用，接口不变） |
-| `backend/writers.py` | 产物生成 |
-| `backend/demo_repo.py` | 演示仓库 |
-| `cli.py` | CLI 入口 |
+| 暴露 REST API | 将工作流引擎的能力通过 HTTP API 对外提供 |
+| 实时状态推送 | 通过 WebSocket 向前端推送节点运行状态 |
+| 解耦服务层 | 工作流引擎只关注业务逻辑，服务层只关注 HTTP/WS 协议 |
+| 保持引擎纯净 | 原有 workflow / tracing / codex_cli / prompts 的核心逻辑不因 API 化而被污染 |
 
 ---
 
-## 二、目标目录结构
+## 2. 目录结构
 
 ```
-backend/server/
-├── __init__.py              # 导出 create_app
-├── app.py                   # FastAPI 应用工厂 + 中间件 + 静态文件挂载
-├── deps.py                  # 依赖注入（MonitorAppState 单例）
-├── models.py                # Pydantic response/request models
-├── routes/
+src/agent_system_coding/
+├── backend/
 │   ├── __init__.py
-│   ├── runs.py              # GET /api/runs + POST /api/runs
-│   ├── snapshot.py          # GET /api/runs/{id}/snapshot
-│   └── artifacts.py         # GET /api/runs/{id}/artifact + /log
-├── ws.py                    # WebSocket /ws/runs/{id}/snapshot
-└── runtime.py               # 保留原有业务逻辑（create_run, load_snapshot 等）
+│   ├── app.py                   # FastAPI 应用入口
+│   ├── config.py                # 配置管理（环境变量、默认值）
+│   │
+│   ├── core/                    # 核心引擎（从平铺文件迁入）
+│   │   ├── __init__.py
+│   │   ├── workflow.py          # ← 原 workflow.py
+│   │   ├── tracing.py           # ← 原 tracing.py
+│   │   ├── codex_cli.py         # ← 原 codex_cli.py
+│   │   ├── prompts.py           # ← 原 prompts.py
+│   │   └── visualization.py     # ← 原 visualization.py
+│   │
+│   ├── models/                  # Pydantic 数据模型（接口契约的代码实现）
+│   │   ├── __init__.py
+│   │   ├── workflow_models.py   # 工作流请求/响应模型
+│   │   ├── trace_models.py      # Trace 事件模型
+│   │   └── graph_models.py      # DAG 图结构模型
+│   │
+│   ├── routes/                  # FastAPI 路由
+│   │   ├── __init__.py
+│   │   ├── workflow.py          # /api/v1/workflow/* REST 端点
+│   │   └── websocket.py         # /ws/v1/workflow/* WebSocket 端点
+│   │
+│   ├── services/                # 服务层（路由与核心之间的胶水）
+│   │   ├── __init__.py
+│   │   ├── workflow_service.py  # 工作流生命周期管理
+│   │   └── event_bus.py         # 内部事件总线（连接 tracing → WS）
+│   │
+│   └── cli.py                   # 改造后的 CLI 入口（调用 app 或直接调引擎）
+│
+├── __init__.py                  # 模块初始化
+└── (frontend/ 由前端文档管理)
 ```
 
 ---
 
-## 三、执行步骤（含并行/串行标注）
+## 3. 模块职责说明
 
-### 🔗 串行前置：备份旧文件
+### 3.1 `core/` — 核心引擎
 
-```
-步骤 0: 备份
-├─ 0.1 复制 http_handler.py → .agent_cache/.backup/
-├─ 0.2 复制 monitor.py → .agent_cache/.backup/
-└─ 0.3 复制 frontend/__init__.py → .agent_cache/.backup/
-```
+**原则**: 零 FastAPI 依赖。`core/` 内部不允许 import FastAPI、Pydantic（除 dataclass 外）。
 
----
+| 文件 | 职责 | 迁移说明 |
+|------|------|----------|
+| `workflow.py` | LangGraph 图定义 + 节点逻辑 + 并行调度 | 从根目录直接移入，内部 import 路径调整 |
+| `tracing.py` | Trace 事件记录（JSON + JSONL + 实时文件） | 新增回调钩子，允许 event_bus 订阅事件 |
+| `codex_cli.py` | Codex CLI 子进程封装 | 直接移入，无逻辑变更 |
+| `prompts.py` | Prompt 模板构建 | 直接移入，无逻辑变更 |
+| `visualization.py` | Mermaid 生成 + trace report 输出 | 直接移入，无逻辑变更 |
 
-### 🔗 串行层 S1：基础设施（必须先完成）
-
-```
-S1.1 pyproject.toml — 添加依赖
-     新增: fastapi>=0.115.0, uvicorn[standard]>=0.34.0, websockets>=15.0
-     放入 [project.optional-dependencies] monitor = [...]
-     更新 [project.scripts] 入口不变
-
-S1.2 backend/server/models.py — 定义 Pydantic 模型
-     从 api-contract.md 类型定义翻译为 Pydantic v2 models:
-     - RunMeta, RunList
-     - SnapshotResponse (可复用 Any dict，后续渐进类型化)
-     - ArtifactResponse
-     - CreateRunRequest, CreateRunResponse
-
-S1.3 backend/server/deps.py — 依赖注入
-     - 全局 MonitorAppState 实例持有
-     - FastAPI Depends() 函数
-```
-
-> S1.2 和 S1.3 互不依赖，**可并行**。
-
----
-
-### 🔀 并行层 P1：路由实现（依赖 S1）
-
-以下三个路由模块互不依赖，**全部可并行**：
-
-```
-P1.1 routes/runs.py
-     - GET /api/runs → 调用 runtime.list_runs()
-     - POST /api/runs → 调用 runtime.create_run()
-     
-P1.2 routes/snapshot.py
-     - GET /api/runs/{run_id}/snapshot → 调用 runtime.load_snapshot()
-     
-P1.3 routes/artifacts.py
-     - GET /api/runs/{run_id}/artifact → 调用 runtime.read_artifact()
-     - GET /api/runs/{run_id}/log → 调用 runtime.read_run_log()
-```
-
----
-
-### 🔀 并行层 P2：WebSocket + App 工厂（依赖 S1）
-
-与 P1 **可并行**：
-
-```
-P2.1 ws.py — WebSocket 端点
-     - ws /ws/runs/{run_id}/snapshot
-     - 1s 间隔推送 load_snapshot() 结果
-     - 连接后立即推送一次
-     - try/except WebSocketDisconnect 处理断线
-
-P2.2 app.py — FastAPI 应用工厂
-     - create_app(app_state: MonitorAppState) -> FastAPI
-     - 注册所有 routes/ 蓝图
-     - 注册 ws.py WebSocket
-     - CORS 中间件
-     - 静态文件挂载 (frontend/dist/ 如存在)
-     - SPA fallback (/* → index.html)
-```
-
----
-
-### 🔗 串行层 S2：入口更新（依赖 P1 + P2）
-
-```
-S2.1 monitor.py 重构
-     - 导入 create_app
-     - 构建 MonitorAppState
-     - uvicorn.run(create_app(state), host=host, port=port)
-     - argparse 参数保持兼容
-
-S2.2 frontend/__init__.py 精简
-     - 移除 render_dashboard_html() 模板替换逻辑
-     - 保留 load_trace_viewer_*() 供 writers.py 使用
-     - 新增 get_dist_dir() 返回 dist/ 路径
-     
-S2.3 backend/server/__init__.py 更新导出
-```
-
-> S2.1, S2.2, S2.3 互不依赖，**可并行**。
-
----
-
-### 🔗 串行层 S3：清理（依赖 S2）
-
-```
-S3.1 删除 backend/server/http_handler.py
-S3.2 验证: uvicorn 启动 + API 测试
-```
-
----
-
-## 四、依赖关系 DAG
-
-```
-S1.1 (pyproject) ─┐
-S1.2 (models) ────┤
-S1.3 (deps) ──────┤
-                   ▼
-         ┌── P1.1 (runs.py)
-         ├── P1.2 (snapshot.py)
-         ├── P1.3 (artifacts.py)     ← 全部可并行
-         ├── P2.1 (ws.py)
-         └── P2.2 (app.py)
-                   │
-                   ▼
-         ┌── S2.1 (monitor.py)
-         ├── S2.2 (frontend/__init__)  ← 可并行
-         └── S2.3 (server/__init__)
-                   │
-                   ▼
-              S3 (清理 + 验证)
-```
-
----
-
-## 五、关键实现细节
-
-### 5.1 app.py 应用工厂模板
+**核心变更**: `tracing.py` 新增 **事件回调机制**
 
 ```python
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+# tracing.py 新增
+from typing import Callable
 
-def create_app(app_state: MonitorAppState) -> FastAPI:
-    app = FastAPI(title="Agent System Coding Monitor")
-    app.state.monitor = app_state
-    
-    app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"], ...)
-    
-    app.include_router(runs_router, prefix="/api")
-    app.include_router(snapshot_router, prefix="/api")
-    app.include_router(artifacts_router, prefix="/api")
-    app.add_api_websocket_route("/ws/runs/{run_id}/snapshot", ws_snapshot)
-    
-    # 静态文件挂载（前端 dist/）
-    dist = get_dist_dir()
-    if dist.exists():
-        app.mount("/", StaticFiles(directory=dist, html=True), name="spa")
-    
-    return app
+_event_listeners: list[Callable[[dict], None]] = []
+
+def register_event_listener(listener: Callable[[dict], None]) -> None:
+    _event_listeners.append(listener)
+
+def _notify_listeners(event: dict) -> None:
+    for listener in _event_listeners:
+        listener(event)
 ```
 
-### 5.2 WebSocket 推送核心逻辑
+这样 `services/event_bus.py` 可以注册监听器，将 trace 事件转发到 WebSocket。
+
+### 3.2 `models/` — 数据模型
+
+接口契约 `api-contract.md` 中每个请求/响应结构的 Pydantic v2 实现。
+
+示例：
 
 ```python
-import asyncio, json
-from fastapi import WebSocket, WebSocketDisconnect
+# models/workflow_models.py
+from pydantic import BaseModel
 
-async def ws_snapshot(websocket: WebSocket, run_id: str):
-    await websocket.accept()
-    app_state = websocket.app.state.monitor
-    try:
-        while True:
-            snapshot = load_snapshot(app_state.runtime_root, run_id)
-            await websocket.send_text(json.dumps(snapshot, ensure_ascii=False))
-            await asyncio.sleep(1)
-    except WebSocketDisconnect:
-        pass
+class WorkflowRunRequest(BaseModel):
+    request: str
+    repo_path: str = "."
+    sandbox: str = "workspace-write"
+    max_retries: int = 2
+    model: str | None = None
+    reasoning_effort: str = "high"
+
+class WorkflowRunResponse(BaseModel):
+    run_id: str
+    status: str = "queued"
+    created_at: str
 ```
 
-### 5.3 runtime.py 改动最小化
+### 3.3 `routes/` — 路由层
 
-`runtime.py` 中所有函数签名不变：
-- `create_run(app_state, prompt) → dict`
-- `load_snapshot(runtime_root, run_id) → dict | None`
-- `list_runs(runtime_root) → list[dict]`
-- `read_artifact(runtime_root, run_id, path) → dict`
-- `read_run_log(runtime_root, run_id) → str`
+职责：HTTP/WS 协议处理 + 请求校验 + 调用 service 层。
 
-路由层只做 HTTP 适配（参数提取、错误码映射），不改业务逻辑。
+路由层**不包含**业务逻辑，只做：
+1. 解析请求参数
+2. 调用 `services/` 层
+3. 序列化响应
 
-### 5.4 pyproject.toml 变更
+### 3.4 `services/` — 服务层
 
-```toml
-[project.optional-dependencies]
-monitor = [
-  "fastapi>=0.115.0",
-  "uvicorn[standard]>=0.34.0",
-  "websockets>=15.0",
-]
-```
+职责：编排核心引擎 + 管理运行生命周期。
 
-安装方式：`pip install -e ".[monitor]"`
+| 文件 | 职责 |
+|------|------|
+| `workflow_service.py` | 管理 run_id → 工作流实例的映射、异步执行调度、状态查询 |
+| `event_bus.py` | 事件总线：订阅 `tracing` 事件 → 广播到 WebSocket 连接 |
+
+### 3.5 `cli.py` — CLI 入口
+
+保留命令行入口能力，支持两种模式：
+- `--serve`: 启动 FastAPI 服务器（面向前端）
+- `--run`: 直接执行工作流（面向 CLI 用户，保持向后兼容）
 
 ---
 
-## 六、验收标准
+## 4. 依赖关系
 
-- [ ] `pip install -e ".[monitor]"` 成功
-- [ ] `agent-system-coding-monitor --port 8080` 可启动
-- [ ] `curl http://localhost:8080/api/runs` 返回 200
-- [ ] `POST /api/runs` 创建运行成功
-- [ ] `GET /api/runs/{id}/snapshot` 返回快照数据
-- [ ] `GET /api/runs/{id}/artifact?path=...` 读取产物
-- [ ] `GET /api/runs/{id}/log` 返回日志
-- [ ] WebSocket `ws://localhost:8080/ws/runs/{id}/snapshot` 可连接并收到推送
-- [ ] 旧 `http_handler.py` 已删除
-- [ ] `writers.py` 的 trace-viewer HTML 静态导出功能不受影响
+```mermaid
+graph TD
+    CLI[cli.py] --> APP[app.py]
+    CLI --> CORE[core/workflow.py]
+    
+    APP --> ROUTES[routes/]
+    ROUTES --> SERVICES[services/]
+    SERVICES --> CORE
+    
+    ROUTES --> MODELS[models/]
+    SERVICES --> EVENTBUS[services/event_bus.py]
+    EVENTBUS --> TRACING[core/tracing.py]
+    
+    CORE --> CODEX[core/codex_cli.py]
+    CORE --> PROMPTS[core/prompts.py]
+    CORE --> VIZ[core/visualization.py]
+    CORE --> TRACING
+```
+
+**层级规则**:
+- `routes/` → `services/` → `core/`（单向依赖，不允许反向）
+- `models/` 是纯数据定义，任何层都可以 import
+- `core/` 不允许 import `routes/`、`services/`、`models/`
+
+---
+
+## 5. 迁移计划
+
+| 原文件 | 新位置 | 迁移动作 | 状态 |
+|--------|--------|----------|------|
+| `workflow.py` | `backend/core/workflow.py` | 移动 + 调整 import | todo |
+| `tracing.py` | `backend/core/tracing.py` | 移动 + 新增事件回调 | todo |
+| `codex_cli.py` | `backend/core/codex_cli.py` | 移动 | todo |
+| `prompts.py` | `backend/core/prompts.py` | 移动 | todo |
+| `visualization.py` | `backend/core/visualization.py` | 移动 | todo |
+| `cli.py` | `backend/cli.py` | 移动 + 新增 --serve 模式 | todo |
+| `__init__.py` | `backend/__init__.py` | 重写 | todo |
+| （新增） | `backend/app.py` | FastAPI 应用入口 | todo |
+| （新增） | `backend/config.py` | 配置管理 | todo |
+| （新增） | `backend/models/*.py` | Pydantic 模型 | todo |
+| （新增） | `backend/routes/*.py` | REST/WS 路由 | todo |
+| （新增） | `backend/services/*.py` | 服务层 | todo |
+
+---
+
+## 6. 技术选型
+
+| 技术 | 版本 | 用途 |
+|------|------|------|
+| FastAPI | ≥0.115 | Web 框架 |
+| Uvicorn | ≥0.30 | ASGI 服务器 |
+| Pydantic | v2 | 数据校验与序列化 |
+| LangGraph | 现有 | 工作流图引擎（不变） |
+
+**新增依赖** (pyproject.toml):
+```
+fastapi>=0.115
+uvicorn[standard]>=0.30
+```
+
+---
+
+## 7. 退出条件
+
+后端重构完成的验收标准：
+
+- [ ] 所有 `api-contract.md` 定义的 REST 端点可通过 HTTP 调用
+- [ ] WebSocket 端点能实时推送 trace 事件
+- [ ] `core/` 内部零 FastAPI 依赖
+- [ ] CLI `--run` 模式保持向后兼容
+- [ ] `python -m uvicorn backend.app:app` 能启动服务
+- [ ] 所有接口响应格式严格符合契约文档
+
+---
+
+## 8. 风险与注意事项
+
+| 风险 | 影响 | 缓解措施 |
+|------|------|----------|
+| 工作流是同步阻塞的 | FastAPI 接口可能被长时间阻塞 | 使用 `asyncio.to_thread()` 或后台任务 |
+| Codex CLI 依赖本地环境 | 部署环境需要安装 Codex | 保持 CLI 模式作为回退 |
+| tracing 事件回调线程安全 | 并发写入可能丢事件 | 使用 `asyncio.Queue` 或线程安全队列 |
+
+---
+
+## 9. 开发节奏
+
+详见 [前端重构文档](./frontend-refactor.md) 中的统一节奏规划。
+
+后端在 Phase 1 中的交付优先级：
+
+1. **P0**: `core/` 文件迁移 + import 路径修复（基础能力不丢失）
+2. **P1**: `models/` + `routes/workflow.py` + `services/workflow_service.py`（REST API 可用）
+3. **P2**: `routes/websocket.py` + `services/event_bus.py` + tracing 回调（实时推送可用）
+4. **P3**: `config.py` + CORS + 生产就绪配置
